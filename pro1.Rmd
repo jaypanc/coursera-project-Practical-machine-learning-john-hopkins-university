@@ -1,0 +1,133 @@
+---
+title: "coursera project"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+Data
+
+The training data for this project are available here:<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+
+The test data are available here:<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+
+
+
+## First we load some important packages 
+
+
+```{r echo=T,results='hide'}
+
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(corrplot)
+
+```
+
+## GETTING DATA
+
+## we load the downloaded data
+```{r}
+trainRaw <- read.csv("traindata.csv")
+testRaw <- read.csv("testdata.csv")
+dim(trainRaw); dim(testRaw)
+
+```
+
+
+## DATA CLEANING AND PROCESSING
+
+#### As there are many columns so we need to remove unneccessary columns
+
+####  We use near zero variance to remove columns
+
+```{r}
+NZV <- nearZeroVar(trainRaw, saveMetrics = TRUE)
+head(NZV, 20)
+training01 <- trainRaw[, !NZV$nzv]
+testing01 <- testRaw[, !NZV$nzv]
+dim(training01); dim(testing01)
+```
+#### here reduced dimension shows unnecessary columns are removed
+
+
+####  there are some columns like username,x,time,etc. we need to remove them
+
+```{r}
+regex <- grepl("^X|timestamp|user_name", names(training01))
+training <- training01[, !regex]
+testing <- testing01[, !regex]
+
+```
+
+####  NA's in data can be a big hurdle.so we remove NA's too.
+
+```{r}
+cond <- (colSums(is.na(training)) == 0)  ## we take all colums having 0 NA
+training <- training[, cond]
+testing <- testing[, cond]
+```
+
+#### using correlation we check if variables are correlated or not
+
+```{r}
+corrplot(cor(training[, -length(names(training))]), method = "color", tl.cex = 0.5)
+
+```
+
+## MODEL TRAINING
+
+#### now we subset our training data into training and validation data
+```{r}
+set.seed(56789) # For reproducibile purpose
+inTrain <- createDataPartition(training$classe, p = 0.70, list = FALSE)
+validation <- training[-inTrain, ]
+training <- training[inTrain, ]
+dim(training); dim(validation)
+
+```
+##### we use set.seed for reproducible purposes.We use 70:30 for training and validation data.
+
+### Prediction using  Decision tree 
+
+```{r echo=FALSE}
+training$classe<-as.factor(training$classe)
+validation$classe<-as.factor(validation$classe)
+```
+
+
+```{r}
+modelTree <- rpart(classe ~ ., data = training, method = "class")
+
+predictTree <- predict(modelTree, validation, type = "class")
+confusionMatrix(validation$classe, predictTree)
+
+
+```
+##### we use classe as outcome variable and remaining as predictors.Then we use this model to predict values of validation data.confusion matrix shows accuracy of **71.78%** so we should try another algorithm and it is **random forest** as it uses decision tree+bootstraping, error gets reduced
+
+## prediction using Random Forest
+```{r}
+modelRF <- train(classe ~ ., data = training, method = "rf", trControl = trainControl(method = "cv", 5), ntree = 250)
+modelRF
+predictRF <- predict(modelRF, validation)
+confusionMatrix(validation$classe, predictRF)
+
+
+```
+#### as this model gives accuracy of **99.89%**,we should opt for this model
+
+
+### now we can apply this on test data
+
+```{r}
+predict(modelRF, testing[, -length(names(testing))])
+```
